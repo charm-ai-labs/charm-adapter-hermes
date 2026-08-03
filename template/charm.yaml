@@ -1,0 +1,32 @@
+version: "0.4.2"
+
+persona:
+  name: "Hermes Agent"
+  description: "Self-improving AI agent with persistent memory"
+  full_description: |
+    A Hermes Agent powered by Nous Research's open-source framework.
+    Features self-improving skills, cross-session memory with FTS5 search,
+    and multi-provider LLM support. Runs as a daemon for 24/7 availability.
+
+interface:
+  input:
+    type: object
+    properties:
+      query:
+        type: string
+        description: "The user's message or task for the agent."
+  output:
+    type: string
+
+runtime:
+  adapter:
+    type: "hermes"
+    entry_point: "src.main:agent"
+  lifecycle: "daemon"
+  mode: "full"
+  environment_variables:
+    models:
+      - OPENROUTER_API_KEY
+
+policies:
+  execution_timeout_seconds: 600

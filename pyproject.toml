@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "charm-adapter-hermes"
+version = "0.1.0"
+description = "Official Charm adapter for Nous Research Hermes Agent"
+readme = "README.md"
+authors = [
+    { name = "Charm Official", email = "hello@charmos.io" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "charmos>=0.4.0",
+]
+
+[project.entry-points."charm.adapters"]
+hermes = "charm_adapter_hermes.adapter:HermesAdapter"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/charm_adapter_hermes"]
