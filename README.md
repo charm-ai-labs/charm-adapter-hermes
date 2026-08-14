@@ -69,9 +69,11 @@ charm push
 |---|---|
 | **Persistent memory** | `HERMES_HOME` is redirected to `CHARM_WORKSPACE_DIR/.hermes` so SQLite/FTS5 data survives daemon restarts |
 | **Streaming** | Hermes `stream_delta_callback` is bridged to Charm's SSE emitter for real-time token output |
+| **Threaded Streaming** | Because Hermes executes synchronously, the adapter wraps `run_conversation` in a background thread and bridges `stream_delta_callback` to Charm Runner via a thread-safe Queue, ensuring real-time token output |
 | **Tool usage** | Hermes `tool_start_callback` / `tool_complete_callback` trigger Charm's tool usage tracking |
 | **Headless mode** | Agent runs with `quiet_mode=True` — no TUI spinners or terminal chrome |
 | **Model flexibility** | Any Hermes-supported provider (OpenRouter, OpenAI, Anthropic, local endpoints) works via env vars |
+| **Lazy Configuration** | If `entry_point` points to a factory function, the adapter automatically injects environment variables like `model` before instantiation |
 
 ## Configuration
 

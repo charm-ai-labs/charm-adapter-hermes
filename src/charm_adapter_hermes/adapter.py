@@ -161,7 +161,7 @@ class HermesAdapter:
 
             # Extract the final assistant text
             if isinstance(result, dict):
-                output = result.get("response", "") or result.get("output", "")
+                output = result.get("final_response", "") or result.get("response", "") or result.get("output", "")
             elif isinstance(result, str):
                 output = result
             else:
@@ -229,7 +229,7 @@ class HermesAdapter:
             try:
                 result = agent.run_conversation(user_message=user_message)
                 if isinstance(result, dict):
-                    output = result.get("response", "") or result.get("output", "")
+                    output = result.get("final_response", "") or result.get("response", "") or result.get("output", "")
                 else:
                     output = str(result)
                 q.put({"type": "success", "content": output})
@@ -272,7 +272,7 @@ class HermesAdapter:
     def get_state(self) -> Dict[str, Any]:
         """Return current agent state (session info, memory stats)."""
         state: Dict[str, Any] = {}
-        agent = self.agent if not callable(self.agent) else None
+        agent = self.agent if hasattr(self.agent, "run_conversation") else None
         if agent:
             state["session_id"] = getattr(agent, "session_id", None)
             state["model"] = getattr(agent, "model", None)
