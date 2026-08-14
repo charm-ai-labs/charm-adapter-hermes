@@ -41,7 +41,8 @@ ENV PATH="/opt/hermes/.venv/bin:${PATH}"
 # ──────────────────────────────────────────────────────────────
 # Stage 4: Install the Charm adapter bridge
 # ──────────────────────────────────────────────────────────────
-RUN pip install --no-cache-dir charm-adapter-hermes
+COPY . /opt/charm-adapter-hermes
+RUN pip install --no-cache-dir /opt/charm-adapter-hermes
 
 # ──────────────────────────────────────────────────────────────
 # Runtime defaults

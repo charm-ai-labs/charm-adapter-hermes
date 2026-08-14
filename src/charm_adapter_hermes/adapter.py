@@ -81,9 +81,11 @@ class HermesAdapter:
 
     def _ensure_agent(self) -> Any:
         """Lazily instantiate the AIAgent if a factory/class was provided."""
-        if inspect.isclass(self.agent):
-            logger.debug("Auto-instantiating Hermes AIAgent class…")
-            self.agent = self.agent(quiet_mode=True)
+        if callable(self.agent) and not hasattr(self.agent, "run_conversation"):
+            logger.debug("Auto-instantiating Hermes AIAgent from factory…")
+            provider_config = getattr(self.config, "provider_config", {}) if self.config else {}
+            kwargs = self._build_agent_kwargs(provider_config)
+            self.agent = self.agent(**kwargs)
         return self.agent
 
     def _build_agent_kwargs(self, provider_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -185,13 +187,10 @@ class HermesAdapter:
     def stream(
         self, inputs: Dict[str, Any], callbacks: Optional[List[Any]] = None
     ) -> Generator[Any, None, None]:
-        """Stream a Hermes conversation with real-time token output.
-
-        Uses Hermes's ``stream_delta_callback`` to capture incremental
-        tokens and yield them as Charm SSE-compatible chunks.  If the
-        agent doesn't support streaming callbacks, falls back to a
-        single-shot invoke.
-        """
+        """Stream a Hermes conversation with real-time token output."""
+        import queue
+        import threading
+        
         agent = self._ensure_agent()
         user_message = inputs.get("query", "") or inputs.get("input", "")
 
@@ -203,25 +202,22 @@ class HermesAdapter:
             }
             return
 
-        # Collect streaming deltas via Hermes callback
-        collected_tokens: List[str] = []
-        tool_events: List[Dict[str, Any]] = []
+        q = queue.Queue()
 
         def _on_stream_delta(delta: str) -> None:
-            """Called by Hermes for each incremental token."""
-            collected_tokens.append(delta)
+            q.put({"type": "token", "content": delta})
 
         def _on_tool_start(tool_name: str, tool_input: Any) -> None:
-            """Called when Hermes begins a tool call."""
-            from charm.core.io import CharmEmitter
-            CharmEmitter.emit_tool_usage(tool_name, 1)
-            tool_events.append({"tool": tool_name, "status": "started"})
+            q.put({"type": "tool_start", "tool": tool_name})
+            try:
+                from charm.core.io import CharmEmitter
+                CharmEmitter.emit_tool_usage(tool_name, 1)
+            except ImportError:
+                pass
 
         def _on_tool_complete(tool_name: str, result: Any) -> None:
-            """Called when Hermes finishes a tool call."""
-            tool_events.append({"tool": tool_name, "status": "completed"})
+            q.put({"type": "tool_complete", "tool": tool_name})
 
-        # Patch callbacks onto the agent if it supports them
         if hasattr(agent, "stream_delta_callback"):
             agent.stream_delta_callback = _on_stream_delta
         if hasattr(agent, "tool_start_callback"):
@@ -229,29 +225,45 @@ class HermesAdapter:
         if hasattr(agent, "tool_complete_callback"):
             agent.tool_complete_callback = _on_tool_complete
 
-        try:
-            result = agent.run_conversation(user_message=user_message)
+        def worker():
+            try:
+                result = agent.run_conversation(user_message=user_message)
+                if isinstance(result, dict):
+                    output = result.get("response", "") or result.get("output", "")
+                else:
+                    output = str(result)
+                q.put({"type": "success", "content": output})
+            except Exception as e:
+                q.put({"type": "error", "error": e})
+            finally:
+                q.put(None)
 
-            # Yield the final assembled result
-            if isinstance(result, dict):
-                output = result.get("response", "") or result.get("output", "")
-            elif isinstance(result, str):
-                output = result
-            else:
-                output = str(result)
+        t = threading.Thread(target=worker)
+        t.start()
 
-            yield {
-                "status": "success",
-                "output": output,
-            }
-
-        except Exception as e:
-            logger.error("Hermes streaming failed: %s", e, exc_info=True)
-            yield {
-                "status": "error",
-                "error_type": type(e).__name__,
-                "message": f"Hermes Agent Error: {str(e)}",
-            }
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            
+            if item["type"] == "token":
+                yield {"status": "streaming", "delta": item["content"]}
+            elif item["type"] == "tool_start":
+                yield {"status": "streaming", "delta": ""} # Tool start heartbeat
+            elif item["type"] == "tool_complete":
+                yield {"status": "streaming", "delta": ""} # Tool end heartbeat
+            elif item["type"] == "success":
+                yield {"status": "success", "output": item["content"]}
+            elif item["type"] == "error":
+                e = item["error"]
+                logger.error("Hermes streaming failed: %s", e, exc_info=True)
+                yield {
+                    "status": "error",
+                    "error_type": type(e).__name__,
+                    "message": f"Hermes Agent Error: {str(e)}",
+                }
+                
+        t.join()
 
     # ------------------------------------------------------------------
     # State & tools (BaseAdapter contract)
@@ -260,7 +272,7 @@ class HermesAdapter:
     def get_state(self) -> Dict[str, Any]:
         """Return current agent state (session info, memory stats)."""
         state: Dict[str, Any] = {}
-        agent = self.agent if not inspect.isclass(self.agent) else None
+        agent = self.agent if not callable(self.agent) else None
         if agent:
             state["session_id"] = getattr(agent, "session_id", None)
             state["model"] = getattr(agent, "model", None)

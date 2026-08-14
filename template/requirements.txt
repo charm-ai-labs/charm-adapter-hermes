@@ -1,0 +1,1 @@
+charm-adapter-hermes>=0.1.0
