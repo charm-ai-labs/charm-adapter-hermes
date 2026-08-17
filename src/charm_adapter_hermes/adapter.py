@@ -122,6 +122,49 @@ class HermesAdapter:
     # Core execution: invoke
     # ------------------------------------------------------------------
 
+    def _prepare_inputs(self, inputs: Dict[str, Any]) -> str:
+        """Extract the message and handle dynamic UI hints/model overrides."""
+        # 1. Dynamic Model Override
+        if "model" in inputs and isinstance(inputs["model"], str):
+            model_val = inputs["model"]
+            # Set env so _build_agent_kwargs picks it up during instantiation
+            os.environ["CHARM_HERMES_MODEL"] = model_val
+            # If already instantiated, update the instance directly
+            if hasattr(self.agent, "model"):
+                self.agent.model = model_val
+
+        self._ensure_agent()
+
+        # 2. Extract primary message
+        user_input = str(inputs.get("query", inputs.get("input", "")))
+
+        # 3. Flatten extra UI fields into the prompt (like OpenClaw)
+        for k, v in inputs.items():
+            if k not in [
+                "query",
+                "input",
+                "model",
+                "__charm_thread_id__",
+                "__charm_state__",
+                "history",
+                "messages",
+            ]:
+                user_input += f"\n\n[{k}]: {v}"
+
+        return user_input.strip()
+
+    def _parse_output(self, raw_output: Any) -> Any:
+        """Parse potential UI render JSON from raw output."""
+        import json
+        if isinstance(raw_output, str) and "_charm_render_type" in raw_output:
+            try:
+                parsed = json.loads(raw_output)
+                if isinstance(parsed, dict) and "_charm_render_type" in parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return raw_output
+
     def invoke(
         self, inputs: Dict[str, Any], callbacks: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
@@ -142,8 +185,8 @@ class HermesAdapter:
             ``{"status": "success", "output": "<assistant response>"}``
             or ``{"status": "error", ...}`` on failure.
         """
-        agent = self._ensure_agent()
-        user_message = inputs.get("query", "") or inputs.get("input", "")
+        user_message = self._prepare_inputs(inputs)
+        agent = self.agent
 
         if not user_message:
             return {
@@ -166,6 +209,8 @@ class HermesAdapter:
                 output = result
             else:
                 output = str(result)
+
+            output = self._parse_output(output)
 
             return {
                 "status": "success",
@@ -191,8 +236,8 @@ class HermesAdapter:
         import queue
         import threading
         
-        agent = self._ensure_agent()
-        user_message = inputs.get("query", "") or inputs.get("input", "")
+        user_message = self._prepare_inputs(inputs)
+        agent = self.agent
 
         if not user_message:
             yield {
@@ -210,6 +255,7 @@ class HermesAdapter:
         def _on_tool_start(tool_name: str, tool_input: Any) -> None:
             q.put({"type": "tool_start", "tool": tool_name})
             try:
+                # pyrefly: ignore [missing-import]
                 from charm.core.io import CharmEmitter
                 CharmEmitter.emit_tool_usage(tool_name, 1)
             except ImportError:
@@ -232,6 +278,8 @@ class HermesAdapter:
                     output = result.get("final_response", "") or result.get("response", "") or result.get("output", "")
                 else:
                     output = str(result)
+                
+                output = self._parse_output(output)
                 q.put({"type": "success", "content": output})
             except Exception as e:
                 q.put({"type": "error", "error": e})
