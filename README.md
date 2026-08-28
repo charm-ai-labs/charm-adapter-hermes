@@ -97,6 +97,8 @@ runtime:
     type: "hermes"
     entry_point: "src.main:agent"
   lifecycle: "daemon"
+  capabilities:
+    manages_own_history: true
   environment_variables:
     models:
       - OPENROUTER_API_KEY
