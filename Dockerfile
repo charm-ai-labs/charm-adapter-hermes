@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────────
 # Stage 1: Charm base runtime
 # ──────────────────────────────────────────────────────────────
-FROM ghcr.io/charmaios/charm-runner-base:latest AS base
+FROM python:3.12-slim-bookworm AS base
 
 # ──────────────────────────────────────────────────────────────
 # Stage 2: System dependencies for Hermes Agent
