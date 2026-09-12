@@ -27,7 +27,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /opt/hermes
 
 # Clone the pinned release of hermes-agent
-ARG HERMES_VERSION=v0.19.1
+ARG HERMES_VERSION=v2026.9.11
 RUN git clone --depth 1 --branch ${HERMES_VERSION} \
     https://github.com/NousResearch/hermes-agent.git . \
     && uv venv /opt/hermes/.venv \
