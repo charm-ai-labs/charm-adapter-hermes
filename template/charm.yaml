@@ -23,7 +23,6 @@ runtime:
     type: "hermes"
     entry_point: "src.main:agent"
   lifecycle: "daemon"
-  mode: "full"
   capabilities:
     manages_own_history: true
   environment_variables:
