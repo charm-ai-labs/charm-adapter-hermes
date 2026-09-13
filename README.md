@@ -118,7 +118,7 @@ For production deployments, use the pre-built runtime image:
 
 ```yaml
 runtime:
-  custom_image: "ghcr.io/charmaios/charm-runner-hermes:latest"
+  custom_image: "ghcr.io/charm-ai-labs/charm-runner-hermes:latest"
 ```
 
 Or build locally:
